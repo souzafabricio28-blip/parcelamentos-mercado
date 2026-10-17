@@ -110,9 +110,13 @@
   .mact .btn{padding:12px 20px}
   /* abas */
   .tabs{display:flex;align-items:center;gap:8px;margin-bottom:20px}
+  .tabwrap{display:flex;align-items:center;gap:8px}
   .tab{background:#151C2A;border:1px solid #232E42;color:#8B98AE;font-family:inherit;font-size:14px;font-weight:700;padding:11px 18px;border-radius:12px;cursor:pointer}
   .tab:hover{color:#C6D2E4}
   .tab.on{background:#1E2A42;border-color:#3B82F6;color:#E7ECF5}
+  .tabwrap .tab{cursor:grab}
+  .tab.arrastando{opacity:.4;cursor:grabbing}
+  .tab.alvo{border-color:#3B82F6;box-shadow:0 0 0 2px rgba(59,130,246,.45)}
   .tspace{flex:1}
   .saved{font-size:12.5px;color:#7DA6FF;font-weight:700}
   .wa{background:#25D366;color:#053B1E}
@@ -261,10 +265,12 @@
 </style></head><body>
 <div class="app">
   <div class="tabs">
-    <button class="tab on" id="tabPainel" onclick="mostrarTab('d')">🏠 Painel</button>
-    <button class="tab" id="tabParcelas" onclick="mostrarTab('p')">💳 Parcelamentos</button>
-    <button class="tab" id="tabMercado" onclick="mostrarTab('m')">🛒 Supermercado</button>
-    <button class="tab" id="tabContas" onclick="mostrarTab('c')">💡 Contas do mês</button>
+    <div class="tabwrap" id="tabwrap">
+      <button class="tab on" id="tabPainel" onclick="mostrarTab('d')" title="Arraste com o mouse pra mudar a ordem">🏠 Painel</button>
+      <button class="tab" id="tabParcelas" onclick="mostrarTab('p')" title="Arraste com o mouse pra mudar a ordem">💳 Parcelamentos</button>
+      <button class="tab" id="tabMercado" onclick="mostrarTab('m')" title="Arraste com o mouse pra mudar a ordem">🛒 Supermercado</button>
+      <button class="tab" id="tabContas" onclick="mostrarTab('c')" title="Arraste com o mouse pra mudar a ordem">💡 Contas do mês</button>
+    </div>
     <div class="tspace"></div>
     <button class="btn sm" id="btnSalvar" onclick="salvarTudo()" title="Salvar tudo no banco de dados (nuvem)">💾 Salvar</button>
     <span id="cloudtxt" class="saved"></span>
@@ -1233,16 +1239,33 @@ function adivinharCat(nome){
   for(let i=0;i<map.length;i++){if(map[i][1].test(n))return map[i][0];}
   return 'Outros';
 }
+function cupLimpaDesc(s){
+  s=String(s||'');
+  s=s.replace(/^\(?\d{2,}\s+/,'');
+  s=s.replace(/\b\d+[.,]\d{2,3}\b/g,' ').replace(/\b\d+\s*[xX]\s*/g,' ').replace(/[·•|*#]/g,' ');
+  s=s.replace(/\s+/g,' ').trim();
+  s=s.replace(/^[\-–—:.\s]+|[\-–—:.\s]+$/g,'').trim();
+  return s;
+}
 function parseCupom(txt){
   const linhas=String(txt||'').split(/\r?\n/).map(function(l){return l.replace(/\s+/g,' ').trim();}).filter(Boolean);
   const out=[];
   const RX_END=/(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
   const RX_X=/(\d+(?:[.,]\d+)?)\s*(?:UN|UNID|UND|KG|LT|CX|PC|GR|G|FD|DZ|ML|M|L)?\s*[xX]\s*(\d+[.,]\d{2})/;
   const RX_UN=/[\(]?(\d+(?:[.,]\d+)?)\s*(?:UN|UNID|UND|KG|LT|CX|PC|GR|FD|DZ|ML|M|L)\b/gi;
+  const RX_LETRA=/[A-Za-zÀ-ÿ]{2,}/;
+  let pend=null;   // descrição que ficou esperando o preço na linha de baixo (NFC-e)
   linhas.forEach(function(l){
     if(CUP_SKIP.test(l))return;
     const m=l.match(RX_END);
-    if(!m)return;
+    if(!m){
+      // sem preço no fim: pode ser a descrição do item (o preço vem embaixo)
+      if(RX_LETRA.test(l)){
+        const d=cupLimpaDesc(l);
+        if(d.length>=2&&RX_LETRA.test(d))pend=d;
+      }
+      return;
+    }
     const total=parseFloat(m[1].replace(/\./g,'').replace(',','.'));
     if(!(total>0))return;
     let desc=l.slice(0,m.index).replace(/[Rr]\$\s*/g,' ').trim();
@@ -1254,14 +1277,18 @@ function parseCupom(txt){
       while((mm=RX_UN.exec(desc))!==null){last=mm;}
       if(last){qtd=parseFloat(last[1].replace(',','.'))||1;desc=desc.replace(last[0],' ');}
     }
-    desc=desc.replace(/^\(?\d{2,}\s+/,'');
-    desc=desc.replace(/\b\d+[.,]\d{2}\b/g,' ').replace(/\b\d+\s*[xX]\s*/g,' ').replace(/[·•|*#]/g,' ').replace(/\s+/g,' ').trim();
-    desc=desc.replace(/^[\-–—:.\s]+|[\-–—:.\s]+$/g,'').trim();
-    if(desc.length<2||!/[A-Za-zÀ-ÿ]/.test(desc))return;
-    const nome=(desc.length>48?desc.slice(0,48).trim():desc).replace(/\b\w/g,function(c){return c;});
+    desc=cupLimpaDesc(desc);
+    if(!RX_LETRA.test(desc)){
+      // a linha só tinha números: usa a descrição da linha de cima
+      if(pend)desc=pend;
+      else return;
+    }
+    pend=null;
+    if(desc.length<2||!RX_LETRA.test(desc))return;
+    const nome=(desc.length>48?desc.slice(0,48).trim():desc);
     const q=(qtd>0)?Math.round(qtd*1000)/1000:1;
     const v=(unit!=null&&q>1)?unit:(total/(q>0?q:1));
-    out.push({nome:nome,qtd:(q>=1?q:q),valor:Math.round(v*100)/100,cat:adivinharCat(nome),sel:true});
+    out.push({nome:nome,qtd:q,valor:Math.round(v*100)/100,cat:adivinharCat(nome),sel:true});
   });
   const seen={},uniq=[];
   out.forEach(function(x){const key=x.nome.toLowerCase()+'|'+x.valor;if(seen[key])return;seen[key]=1;uniq.push(x);});
@@ -1346,6 +1373,56 @@ function copiarLista(){
 function fallbackCopy(t){
   const ta=document.createElement('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';
   document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Lista copiada! 📋');}catch(e){toast('Não consegui copiar 😕');}ta.remove();
+}
+/* ===== ABAS REORDENÁVEIS (arrastar com o mouse) ===== */
+var TABORDEM_KEY='abas_ordem_v1';
+function abasSalvarOrdem(){
+  try{
+    var w=document.getElementById('tabwrap');if(!w)return;
+    var ids=[].map.call(w.querySelectorAll('.tab'),function(t){return t.id;});
+    localStorage.setItem(TABORDEM_KEY,JSON.stringify(ids));
+  }catch(e){}
+}
+function abasAplicarOrdem(){
+  var w=document.getElementById('tabwrap');if(!w)return;
+  var ids=null;
+  try{ids=JSON.parse(localStorage.getItem(TABORDEM_KEY)||'null');}catch(e){ids=null;}
+  if(!Array.isArray(ids)||!ids.length)return;
+  ids.forEach(function(id){
+    var el=document.getElementById(id);
+    if(el&&el.parentNode===w)w.appendChild(el);
+  });
+}
+function abasIniciar(){
+  var w=document.getElementById('tabwrap');if(!w)return;
+  abasAplicarOrdem();
+  var arrastando=null;
+  [].forEach.call(w.querySelectorAll('.tab'),function(t){
+    t.setAttribute('draggable','true');
+    t.addEventListener('dragstart',function(e){
+      arrastando=t;t.classList.add('arrastando');
+      try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',t.id);}catch(_){}
+    });
+    t.addEventListener('dragend',function(){
+      t.classList.remove('arrastando');
+      [].forEach.call(w.querySelectorAll('.tab'),function(x){x.classList.remove('alvo');});
+      arrastando=null;
+      abasSalvarOrdem();
+    });
+    t.addEventListener('dragover',function(e){
+      if(!arrastando||arrastando===t)return;
+      e.preventDefault();
+      try{e.dataTransfer.dropEffect='move';}catch(_){}
+      var r=t.getBoundingClientRect();
+      var antes=(e.clientX-r.left)<(r.width/2);
+      var alvo=antes?t:t.nextElementSibling;
+      if(alvo===arrastando)return;
+      w.insertBefore(arrastando,alvo);
+      t.classList.add('alvo');
+    });
+    t.addEventListener('dragleave',function(){t.classList.remove('alvo');});
+    t.addEventListener('drop',function(e){e.preventDefault();t.classList.remove('alvo');});
+  });
 }
 function mostrarTab(t){
   const map={d:'view-painel',p:'view-parcelas',m:'view-mercado',c:'view-contas'};
@@ -1885,6 +1962,7 @@ checarAlertas(true);
 setInterval(function(){checarAlertas(true);},1800000);
 const hh=location.hash.replace('#','');
 mostrarTab(/mercado/.test(hh)?'m':(/contas/.test(hh)?'c':(/parcelas/.test(hh)?'p':'d')));
+abasIniciar();
 syncIniciar();
 syncLigarPoll();
 </script>
