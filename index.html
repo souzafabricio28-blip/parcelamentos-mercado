@@ -266,6 +266,7 @@
     <button class="tab" id="tabMercado" onclick="mostrarTab('m')">🛒 Supermercado</button>
     <button class="tab" id="tabContas" onclick="mostrarTab('c')">💡 Contas do mês</button>
     <div class="tspace"></div>
+    <button class="btn sm" id="btnSalvar" onclick="salvarTudo()" title="Salvar tudo no banco de dados (nuvem)">💾 Salvar</button>
     <span id="cloudtxt" class="saved"></span>
     <span id="savedtxt" class="saved">· salvo automaticamente</span>
   </div>
@@ -878,6 +879,26 @@ function syncBaixar(){
   if(!confirm('Baixar da nuvem e substituir o que está neste aparelho?'))return;
   syncStatus('Baixando…');
   syncPull(true,false).catch(function(e){syncStatus('Erro: '+e.message,'#ffb4b4');toast('Não consegui baixar agora');});
+}
+function salvarTudo(){
+  try{save();saveM();saveC();saveE();saveH();}catch(e){}
+  flashSaved();
+  var b=document.getElementById('btnSalvar');
+  if(!syncKey){
+    if(b){b.textContent='💾 Salvo aqui';setTimeout(function(){if(b)b.textContent='💾 Salvar';},1800);}
+    toast('💾 Salvo neste aparelho — ligue a ☁️ Nuvem pra subir pro banco');
+    return;
+  }
+  if(b){b.disabled=true;b.textContent='💾 Salvando…';}
+  syncPush(true).then(function(){
+    if(b)b.textContent='✅ Salvo na nuvem';
+    toast('💾 Salvo no banco de dados ✓');
+  }).catch(function(e){
+    if(b)b.textContent='⚠️ Só aqui';
+    toast('Salvou no aparelho, mas não subiu: '+e.message);
+  }).then(function(){
+    setTimeout(function(){if(b){b.disabled=false;b.textContent='💾 Salvar';}},1900);
+  });
 }
 function syncDesativar(){
   if(!confirm('Desligar a sincronização neste aparelho?\n\nOs dados que já estão aqui continuam salvos. Só para de sincronizar.'))return;
