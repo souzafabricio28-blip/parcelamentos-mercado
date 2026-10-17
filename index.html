@@ -594,8 +594,7 @@
   <div class="mbox">
     <h3>☁️ Sincronizar na nuvem</h3>
     <div class="hint" style="margin-bottom:14px">Coloque o <b>mesmo código</b> em todos os aparelhos e os dados ficam iguais em todos eles — PC, notebook, celular. O que você mudar aqui aparece lá sozinho.</div>
-    <div id="nvOffline" class="hint" style="display:none;color:#ffd479">A nuvem só funciona na <b>versão online</b> do app. Abra pelo link do site (<b>parcelamentos-mercado.vercel.app</b>) e tente de novo. Aqui, no arquivo do PC, os dados continuam salvos normalmente.</div>
-    <div id="nvOn" style="display:none">
+    <div id="nvOn">
       <div class="fld"><label>CÓDIGO DE SINCRONIZAÇÃO (invente um e guarde bem)</label>
         <input id="nvKey" type="text" placeholder="ex: souza-casa-2026-7k2" autocomplete="off" spellcheck="false">
       </div>
@@ -771,7 +770,8 @@ function zerarTudo(){
 /* ===== ☁️ NUVEM — sincronização entre aparelhos ===== */
 var SKEY='sync_key_v1', SLAST='sync_last_v1', SLOCAL='sync_local_v1';
 var syncKey='', syncLast=0, syncLocalAt=0, syncAplicando=false, syncTimer=null;
-var syncOnline=(location.protocol==='http:'||location.protocol==='https:');
+var SYNC_BASE=(location.protocol==='http:'||location.protocol==='https:')?(location.origin||''):'https://parcelamentos-mercado.vercel.app';
+var syncOnline=true;
 try{
   syncKey=localStorage.getItem(SKEY)||'';
   syncLast=parseInt(localStorage.getItem(SLAST)||'0',10)||0;
@@ -791,7 +791,7 @@ function syncTemDados(){
   try{return !!((plans&&plans.length)||(itens&&itens.length)||(hist&&hist.length)||(contas&&contas.length)||(entradas&&Object.keys(entradas).length));}catch(e){return false;}
 }
 async function syncReq(metodo,corpo){
-  var url='/api/sync',opt={method:metodo,cache:'no-store'};
+  var url=SYNC_BASE+'/api/sync',opt={method:metodo,cache:'no-store'};
   if(metodo==='GET'){url+='?key='+encodeURIComponent(syncKey);}
   else{opt.headers={'Content-Type':'application/json'};opt.body=JSON.stringify(corpo);}
   var r=await fetch(url,opt),j=null;
@@ -847,15 +847,11 @@ async function syncIniciar(){
 }
 function abrirNuvem(){
   var m=document.getElementById('nuvemModal');if(!m)return;
-  var off=document.getElementById('nvOffline'),on=document.getElementById('nvOn');
-  if(!syncOnline){off.style.display='block';on.style.display='none';}
-  else{off.style.display='none';on.style.display='block';}
   var i=document.getElementById('nvKey');if(i)i.value=syncKey;
   syncStatus(syncQuando()||(syncKey?'':'Nuvem desligada neste aparelho.'));
   m.classList.add('on');
 }
 function syncSalvarKey(){
-  if(!syncOnline){alert('A nuvem só funciona abrindo o app pelo link do site.');return;}
   var k=(document.getElementById('nvKey').value||'').trim().toLowerCase();
   if(k.length<8){alert('Use um código com pelo menos 8 caracteres.\nExemplo: souza-casa-2026-7k2');return;}
   syncKey=k;
