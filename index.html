@@ -266,6 +266,7 @@
     <button class="tab" id="tabMercado" onclick="mostrarTab('m')">🛒 Supermercado</button>
     <button class="tab" id="tabContas" onclick="mostrarTab('c')">💡 Contas do mês</button>
     <div class="tspace"></div>
+    <span id="cloudtxt" class="saved"></span>
     <span id="savedtxt" class="saved">· salvo automaticamente</span>
   </div>
 
@@ -276,6 +277,7 @@
         <div class="sub">Tudo o que você tem pra pagar e comprar, num só lugar</div>
       </div>
       <div class="right">
+        <button class="btn ghost" onclick="abrirNuvem()" title="Manter os mesmos dados em todos os aparelhos">☁️ Nuvem</button>
         <button class="btn ghost" onclick="abrirNotif()" title="Receber os avisos no seu celular">📱 Alerta no celular</button>
         <button class="btn ghost" onclick="ativarAlertas()" title="Avisar no Windows quando algo estiver perto de vencer">🔔 Alertas do Windows</button>
       </div>
@@ -588,6 +590,32 @@
   </div>
 </div>
 
+<div class="modal" id="nuvemModal" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="mbox">
+    <h3>☁️ Sincronizar na nuvem</h3>
+    <div class="hint" style="margin-bottom:14px">Coloque o <b>mesmo código</b> em todos os aparelhos e os dados ficam iguais em todos eles — PC, notebook, celular. O que você mudar aqui aparece lá sozinho.</div>
+    <div id="nvOffline" class="hint" style="display:none;color:#ffd479">A nuvem só funciona na <b>versão online</b> do app. Abra pelo link do site (<b>parcelamentos-mercado.vercel.app</b>) e tente de novo. Aqui, no arquivo do PC, os dados continuam salvos normalmente.</div>
+    <div id="nvOn" style="display:none">
+      <div class="fld"><label>CÓDIGO DE SINCRONIZAÇÃO (invente um e guarde bem)</label>
+        <input id="nvKey" type="text" placeholder="ex: souza-casa-2026-7k2" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="hint">Funciona como uma senha: <b>quem souber o código vê os dados</b>. Use algo difícil, só seu, e igual em todos os aparelhos.</div>
+      <div id="nvStat" class="hint" style="margin-top:12px;font-weight:600"></div>
+      <div class="mact" style="justify-content:space-between;margin-top:8px">
+        <div style="display:flex;gap:9px;flex-wrap:wrap">
+          <button class="btn ghost sm" onclick="syncEnviar()">⬆️ Enviar deste aparelho</button>
+          <button class="btn ghost sm" onclick="syncBaixar()">⬇️ Baixar da nuvem</button>
+        </div>
+        <button class="btn" onclick="syncSalvarKey()">Ativar / Salvar</button>
+      </div>
+      <div class="mact" style="justify-content:space-between;margin-top:10px">
+        <div class="hint" style="margin:0">Depois de ativado, o app envia sozinho a cada mudança.</div>
+        <button class="btn ghost sm" onclick="syncDesativar()">Desligar neste aparelho</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="notifModal" onclick="if(event.target===this)this.classList.remove('on')">
   <div class="mbox">
     <h3>📱 Alerta no celular</h3>
@@ -674,7 +702,7 @@ function flashSaved(){const s=document.getElementById('savedtxt');if(s){const d=
 function toast(msg){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('on');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove('on'),1900);}
 function save(){
   try{localStorage.setItem(KEY,serialize());}catch(e){}
-  flashSaved();
+  flashSaved();syncMarcarLocal();
 }
 function load(){
   try{
@@ -686,8 +714,28 @@ function load(){
     return true;
   }catch(e){return false;}
 }
+function coletarDados(){
+  return {app:'Parcelamentos + Mercado',versao:6,geradoEm:new Date().toISOString(),planos:JSON.parse(serialize()),mercado:itens,historico:hist,contas:contas,entradas:entradas,orcamento:orcamento,alertaDias:alertaDias,notif:notif};
+}
+function aplicarDados(d){
+  const arr=d.planos||d.plans||(Array.isArray(d)?d:null);
+  let ok=false;
+  if(Array.isArray(arr)){plans=arr.length?toPlans(arr):[];sel=0;ok=true;}
+  if(Array.isArray(d.mercado)){itens=d.mercado;ok=true;}
+  if(Array.isArray(d.historico)){hist=d.historico;saveH();}
+  if(Array.isArray(d.contas)){contas=d.contas.map(c=>Object.assign({pagos:{},tipo:'pagar'},c));saveC();ok=true;}
+  if(d.entradas&&typeof d.entradas==='object'){entradas=d.entradas;saveE();}
+  if(d.orcamento!=null){orcamento=parseFloat(d.orcamento)||0;try{localStorage.setItem(OKEY,String(orcamento));}catch(e){}}
+  if(d.alertaDias!=null){try{localStorage.setItem(AKEY,String(parseInt(d.alertaDias)||0));}catch(e){}loadAlertaDias();}
+  if(d.notif){notif.canal=d.notif.canal||'ntfy';notif.ntfy=Object.assign({topic:'',server:'https://ntfy.sh'},d.notif.ntfy||{});notif.telegram=Object.assign({token:'',chat:''},d.notif.telegram||{});notif.discord=Object.assign({url:''},d.notif.discord||{});saveNotifLS();}
+  if(!ok)throw 0;
+  save();saveM();render();renderM();renderContas();renderGastos();
+  if(typeof renderOrc==='function')renderOrc();
+  if(typeof renderPainel==='function')renderPainel();
+  return true;
+}
 function exportar(){
-  const data={app:'Parcelamentos + Mercado',versao:6,geradoEm:new Date().toISOString(),planos:JSON.parse(serialize()),mercado:itens,historico:hist,contas:contas,entradas:entradas,orcamento:orcamento,alertaDias:alertaDias,notif:notif};
+  const data=coletarDados();
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-parcelamentos-e-mercado.json';
   document.body.appendChild(a);a.click();a.remove();
@@ -698,19 +746,8 @@ function importar(inp){
   const r=new FileReader();
   r.onload=()=>{
     try{
-      const d=JSON.parse(r.result);
-      const arr=d.planos||d.plans||(Array.isArray(d)?d:null);
-      let ok=false;
-      if(Array.isArray(arr)&&arr.length){plans=toPlans(arr);sel=0;ok=true;}
-      if(Array.isArray(d.mercado)){itens=d.mercado;ok=true;}
-      if(Array.isArray(d.historico)){hist=d.historico;saveH();}
-      if(Array.isArray(d.contas)){contas=d.contas.map(c=>Object.assign({pagos:{},tipo:'pagar'},c));saveC();ok=true;}
-      if(d.entradas&&typeof d.entradas==='object'){entradas=d.entradas;saveE();}
-      if(d.orcamento!=null){orcamento=parseFloat(d.orcamento)||0;try{localStorage.setItem(OKEY,String(orcamento));}catch(e){}}
-      if(d.alertaDias!=null){try{localStorage.setItem(AKEY,String(parseInt(d.alertaDias)||0));}catch(e){}loadAlertaDias();}
-      if(d.notif){notif.canal=d.notif.canal||'ntfy';notif.ntfy=Object.assign({topic:'',server:'https://ntfy.sh'},d.notif.ntfy||{});notif.telegram=Object.assign({token:'',chat:''},d.notif.telegram||{});notif.discord=Object.assign({url:''},d.notif.discord||{});saveNotifLS();}
-      if(!ok)throw 0;
-      save();saveM();render();renderM();renderContas();renderGastos();toast('Backup restaurado ✓');
+      aplicarDados(JSON.parse(r.result));
+      toast('Backup restaurado ✓');
     }catch(e){alert('Não consegui ler esse arquivo. Use um backup gerado pelo próprio app.');}
   };
   r.readAsText(f);inp.value='';
@@ -729,6 +766,130 @@ function zerarTudo(){
   loadAlertaDias();
   render();renderM();renderContas();renderGastos();renderOrc();renderPainel();
   toast('Tudo zerado ✓ pode começar do zero');
+}
+
+/* ===== ☁️ NUVEM — sincronização entre aparelhos ===== */
+var SKEY='sync_key_v1', SLAST='sync_last_v1', SLOCAL='sync_local_v1';
+var syncKey='', syncLast=0, syncLocalAt=0, syncAplicando=false, syncTimer=null;
+var syncOnline=(location.protocol==='http:'||location.protocol==='https:');
+try{
+  syncKey=localStorage.getItem(SKEY)||'';
+  syncLast=parseInt(localStorage.getItem(SLAST)||'0',10)||0;
+  syncLocalAt=parseInt(localStorage.getItem(SLOCAL)||'0',10)||0;
+}catch(e){}
+
+function syncStatus(txt,cor){
+  var el=document.getElementById('nvStat');
+  if(el){el.textContent=txt||'';el.style.color=cor||'';}
+  var ct=document.getElementById('cloudtxt');
+  if(ct)ct.textContent=syncKey?(syncOnline?'· ☁️ ligado':'· ☁️ só no site'):'';
+}
+function syncQuando(){
+  return syncLast?('Última sincronização: '+new Date(syncLast).toLocaleString('pt-BR')):'';
+}
+function syncTemDados(){
+  try{return !!((plans&&plans.length)||(itens&&itens.length)||(hist&&hist.length)||(contas&&contas.length)||(entradas&&Object.keys(entradas).length));}catch(e){return false;}
+}
+async function syncReq(metodo,corpo){
+  var url='/api/sync',opt={method:metodo,cache:'no-store'};
+  if(metodo==='GET'){url+='?key='+encodeURIComponent(syncKey);}
+  else{opt.headers={'Content-Type':'application/json'};opt.body=JSON.stringify(corpo);}
+  var r=await fetch(url,opt),j=null;
+  try{j=await r.json();}catch(e){}
+  if(!r.ok)throw new Error((j&&(j.detalhe||j.error))||('HTTP '+r.status));
+  return j;
+}
+function syncMarcarLocal(){
+  if(syncAplicando)return;
+  syncLocalAt=Date.now();
+  try{localStorage.setItem(SLOCAL,String(syncLocalAt));}catch(e){}
+  syncAgendarPush();
+}
+function syncAgendarPush(){
+  if(!syncKey||!syncOnline||syncAplicando)return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(function(){syncPush(true).catch(function(){});},1500);
+}
+async function syncPush(silent){
+  if(!syncKey||!syncOnline)return false;
+  var j=await syncReq('POST',{key:syncKey,data:coletarDados(),device:(navigator.platform||'pc')+' '+(navigator.userAgent||'').slice(-28)});
+  if(j&&j.updatedAt){syncLast=j.updatedAt;syncLocalAt=j.updatedAt;try{localStorage.setItem(SLAST,String(syncLast));localStorage.setItem(SLOCAL,String(syncLocalAt));}catch(e){}}
+  if(!silent)toast('☁️ Enviado pra nuvem ✓');
+  syncStatus(syncQuando());
+  return true;
+}
+async function syncPull(forcar,silent){
+  if(!syncKey||!syncOnline)return false;
+  var j=await syncReq('GET');
+  if(!j||j.vazio){if(!silent)toast('A nuvem ainda está vazia');return false;}
+  if(!forcar&&j.updatedAt&&j.updatedAt<=syncLast)return false;
+  syncAplicando=true;
+  try{aplicarDados(j.data);}finally{syncAplicando=false;}
+  syncLast=j.updatedAt;syncLocalAt=j.updatedAt;
+  try{localStorage.setItem(SLAST,String(syncLast));localStorage.setItem(SLOCAL,String(syncLocalAt));}catch(e){}
+  if(!silent)toast('⬇️ Dados da nuvem aplicados ✓');
+  syncStatus(syncQuando());
+  return true;
+}
+async function syncIniciar(){
+  if(!syncKey||!syncOnline)return;
+  try{
+    var j=await syncReq('GET');
+    if(!j||j.vazio){
+      if(syncTemDados())await syncPush(true);
+      else syncStatus('Nuvem ligada — nada guardado ainda.');
+      return;
+    }
+    if(j.updatedAt>syncLocalAt)await syncPull(true,true);
+    else if(syncLocalAt>j.updatedAt)await syncPush(true);
+    syncStatus(syncQuando());
+  }catch(e){syncStatus('Sem conexão com a nuvem agora.','#ffb4b4');}
+}
+function abrirNuvem(){
+  var m=document.getElementById('nuvemModal');if(!m)return;
+  var off=document.getElementById('nvOffline'),on=document.getElementById('nvOn');
+  if(!syncOnline){off.style.display='block';on.style.display='none';}
+  else{off.style.display='none';on.style.display='block';}
+  var i=document.getElementById('nvKey');if(i)i.value=syncKey;
+  syncStatus(syncQuando()||(syncKey?'':'Nuvem desligada neste aparelho.'));
+  m.classList.add('on');
+}
+function syncSalvarKey(){
+  if(!syncOnline){alert('A nuvem só funciona abrindo o app pelo link do site.');return;}
+  var k=(document.getElementById('nvKey').value||'').trim().toLowerCase();
+  if(k.length<8){alert('Use um código com pelo menos 8 caracteres.\nExemplo: souza-casa-2026-7k2');return;}
+  syncKey=k;
+  try{localStorage.setItem(SKEY,k);}catch(e){}
+  syncStatus('Verificando a nuvem…');
+  (async function(){
+    try{
+      var j=await syncReq('GET');
+      if(!j||j.vazio){await syncPush(true);toast('☁️ Nuvem ligada — dados enviados ✓');}
+      else{
+        var baixar=confirm('Esse código já tem dados na nuvem.\n\nOK  = BAIXAR da nuvem (substitui o que está neste aparelho)\nCancelar = ENVIAR deste aparelho (sobe o que está aqui)');
+        if(baixar)await syncPull(true,true);else await syncPush(true);
+        toast('☁️ Sincronizado ✓');
+      }
+      syncStatus(syncQuando());
+    }catch(e){syncStatus('Erro: '+e.message,'#ffb4b4');}
+  })();
+}
+function syncEnviar(){
+  syncStatus('Enviando…');
+  syncPush(false).catch(function(e){syncStatus('Erro: '+e.message,'#ffb4b4');toast('Não consegui enviar agora');});
+}
+function syncBaixar(){
+  if(!confirm('Baixar da nuvem e substituir o que está neste aparelho?'))return;
+  syncStatus('Baixando…');
+  syncPull(true,false).catch(function(e){syncStatus('Erro: '+e.message,'#ffb4b4');toast('Não consegui baixar agora');});
+}
+function syncDesativar(){
+  if(!confirm('Desligar a sincronização neste aparelho?\n\nOs dados que já estão aqui continuam salvos. Só para de sincronizar.'))return;
+  syncKey='';
+  try{localStorage.removeItem(SKEY);}catch(e){}
+  var i=document.getElementById('nvKey');if(i)i.value='';
+  syncStatus('Nuvem desligada neste aparelho.');
+  toast('Sincronização desligada');
 }
 let edIdx=-1;
 function abrirEdicao(i){
@@ -777,9 +938,9 @@ const CATS=['Mercearia','Hortifrúti','Carnes','Frios e laticínios','Padaria','
 const SUG=['Arroz','Feijão','Leite','Pão','Ovos','Café','Açúcar','Óleo','Macarrão','Banana','Tomate','Papel higiênico'];
 let itens=[];
 let hist=[];
-function saveM(){try{localStorage.setItem(MKEY,JSON.stringify(itens));}catch(e){}flashSaved();}
+function saveM(){try{localStorage.setItem(MKEY,JSON.stringify(itens));}catch(e){}flashSaved();syncMarcarLocal();}
 function loadM(){try{const r=localStorage.getItem(MKEY);if(r){const a=JSON.parse(r);if(Array.isArray(a)){itens=a.map(x=>Object.assign({},x,{cat:x.cat||'Outros'}));return true;}}}catch(e){}return false;}
-function saveH(){try{localStorage.setItem(HKEY,JSON.stringify(hist));}catch(e){}}
+function saveH(){try{localStorage.setItem(HKEY,JSON.stringify(hist));}catch(e){}syncMarcarLocal();}
 function loadH(){try{const r=localStorage.getItem(HKEY);if(r){const a=JSON.parse(r);if(Array.isArray(a)){hist=a;return true;}}}catch(e){}return false;}
 function fillCats(){const s=document.getElementById('cat');if(!s)return;s.innerHTML='';CATS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;s.appendChild(o);});}
 function fmtQtd(q){const n=Number(q)||0;return (Math.abs(n-Math.round(n))<1e-9)?String(Math.round(n)):n.toLocaleString('pt-BR',{maximumFractionDigits:3});}
@@ -1063,12 +1224,12 @@ const CKEY='contas_v1';
 let contas=[];
 const EKEY='entradas_v1';
 let entradas={};
-function saveE(){try{localStorage.setItem(EKEY,JSON.stringify(entradas));}catch(e){}}
+function saveE(){try{localStorage.setItem(EKEY,JSON.stringify(entradas));}catch(e){}syncMarcarLocal();}
 function loadE(){try{const r=localStorage.getItem(EKEY);if(r){const o=JSON.parse(r);if(o&&typeof o==='object')entradas=o;}}catch(e){}}
 let mesView=new Date(today.getFullYear(),today.getMonth(),1);
 function mesKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function diaUtil(c,y,m){const ult=new Date(y,m+1,0).getDate();return Math.min(c.dia,ult);}
-function saveC(){try{localStorage.setItem(CKEY,JSON.stringify(contas));}catch(e){}flashSaved();}
+function saveC(){try{localStorage.setItem(CKEY,JSON.stringify(contas));}catch(e){}flashSaved();syncMarcarLocal();}
 function loadC(){try{const r=localStorage.getItem(CKEY);if(r){const a=JSON.parse(r);if(Array.isArray(a)){contas=a.map(c=>Object.assign({pagos:{},tipo:'pagar'},c));return true;}}}catch(e){}return false;}
 function mkConta(nome,valor,dia,tipo){return{id:Math.random().toString(36).slice(2),nome:nome,valor:valor,dia:dia,tipo:tipo||'pagar',pagos:{}};}
 function addConta(){
@@ -1297,7 +1458,7 @@ function checarAlertas(silent){
 const NKEY='notif_v1';
 let notif={canal:'ntfy',ntfy:{topic:'',server:'https://ntfy.sh'},telegram:{token:'',chat:''},discord:{url:''}};
 function loadNotif(){try{const r=localStorage.getItem(NKEY);if(r){const o=JSON.parse(r);notif.canal=o.canal||'ntfy';notif.ntfy=Object.assign({topic:'',server:'https://ntfy.sh'},o.ntfy||{});notif.telegram=Object.assign({token:'',chat:''},o.telegram||{});notif.discord=Object.assign({url:''},o.discord||{});}}catch(e){}}
-function saveNotifLS(){try{localStorage.setItem(NKEY,JSON.stringify(notif));}catch(e){}}
+function saveNotifLS(){try{localStorage.setItem(NKEY,JSON.stringify(notif));}catch(e){}syncMarcarLocal();}
 function abrirNotif(){preencherNotif();document.getElementById('notifModal').classList.add('on');}
 function preencherNotif(){
   document.getElementById('nfCanal').value=notif.canal||'ntfy';
@@ -1562,6 +1723,7 @@ loadE();
 loadAlertaDias();
 loadNotif();
 aplicarCfgDaURL();
+syncStatus();
 fillCats();
 document.getElementById('item').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addItem();}});
 document.getElementById('e5').addEventListener('input',function(){setEntrada('d5',this.value);});
@@ -1584,6 +1746,7 @@ checarAlertas(true);
 setInterval(function(){checarAlertas(true);},1800000);
 const hh=location.hash.replace('#','');
 mostrarTab(hh==='mercado'?'m':(hh==='contas'?'c':(hh==='parcelas'?'p':'d')));
+syncIniciar();
 </script>
 <div id="toast"></div>
 </body></html>
