@@ -1222,11 +1222,12 @@ function lerCupom(img){
   });
 }
 function cupToggleRaw(){const e=document.getElementById('cupRaw');e.style.display=(e.style.display==='none'||!e.style.display)?'block':'none';}
-const CUP_SKIP=/(CNPJ|CPF|NFC-?E|SAT\b|CHAVE|DOCUMENTO|AUXILIAR|TRIBUTOS?|TOTAL|TROCO|DINHEIRO|CART[ÃA]O|D[ÉE]BITO|CR[ÉE]DITO|PIX|DESCONTO|SUBTOTAL|OPERADOR|CAIXA\b|OBRIGAD|VOLTE|WWW|HTTP|S[ÉE]RIE|PROTOCOLO|AUTORIZ|BANCO|NSU|CCF|COO\b|ITENS|QTD|VL\b|UNIT|FORMA|PAGAMENTO|APROVAD|ESTABELEC|ENDERE|CEP\b|\bIE\b|\bIM\b|FILIAL|CUPOM|FISCAL|ELETR[ÔO]NIC|CONSUMIDOR|SIMPLIFICAD|REDE\b|TERMINAL|TRANSA|MERCADORIA|ICMS|PIS|COFINS|IMPOSTO|VALOR APROX|R\$|LTDA|CNPJ)/i;
+const CUP_SKIP=/(CNPJ|CPF|NFC-?E|SAT\b|CHAVE|DOCUMENTO|AUXILIAR|TRIBUTOS?|TOTAL|TROCO|DINHEIRO|CART[ÃA]O|D[ÉE]BITO|CR[ÉE]DITO|PIX|DESCONTO|SUBTOTAL|OPERADOR|CAIXA\b|OBRIGAD|VOLTE|WWW|HTTP|S[ÉE]RIE|PROTOCOLO|AUTORIZ|BANCO|NSU|CCF|COO\b|ITENS|QTD|VL\b|UNIT|FORMA|PAGAMENTO|PAGO\b|APROVAD|ESTABELEC|ENDERE|CEP\b|\bIE\b|\bIM\b|FILIAL|CUPOM|FISCAL|ELETR[ÔO]NIC|CONSUMIDOR|SIMPLIFICAD|REDE\b|TERMINAL|TRANSA|MERCADORIA|ICMS|PIS|COFINS|IMPOSTO|VALOR APROX|R\$|LTDA|CNPJ)/i;
 function adivinharCat(nome){
   const n=(nome||'').toUpperCase();
+  if(/EXTRATO|MOLHO|POLPA|KETCHUP|KATCHUP|PASSATA|CONCENTRADO/.test(n))return 'Mercearia';
   const map=[
-    ['Hortifrúti',/BANANA|MA[ÇC][ÃA]|TOMATE|ALFACE|CEBOLA|BATATA|LARANJA|LIM[ÃA]O|MAM[ÃA]O|MELANCIA|UVA|CENOURA|ABOBR|PEPINO|PIMENT|BR[ÓO]COL|COUVE|SALSINHA|CHEIRO|FRUTA|VERDUR|LEGUM|REPOLHO|BETERRABA|CHUCHU|JIL[ÓO]|MARACUJ|MORANGO|PERA\b|GOIABA|TANGERINA|ABACAXI|ALHO|GENGIBRE/],
+    ['Hortifrúti',/BANANA|\bMA[ÇC][ÃA]\b|TOMATE|ALFACE|CEBOLA|BATATA|LARANJA|LIM[ÃA]O|MAM[ÃA]O|MELANCIA|\bUVA\b|CENOURA|ABOBR|PEPINO|PIMENT|BR[ÓO]COL|COUVE|SALSINHA|CHEIRO|FRUTA|VERDUR|LEGUM|REPOLHO|BETERRABA|CHUCHU|JIL[ÓO]|MARACUJ|MORANGO|\bPERA\b|GOIABA|TANGERINA|ABACAXI|\bALHO\b|GENGIBRE/],
     ['Carnes',/CARNE|FRANGO|PEIXE|LINGUI[ÇC]A|PICANHA|ALCATRA|COX[AÃ]O|FIL[ÉE]|BIFE|MO[ÍI]DA|SALSICHA|BACON|PERU|COSTELA|TIL[ÁA]PIA|SALM[ÃA]O|PANCETA|LOMBO|ACEM|MAMINHA|PATINHO|SOBRECOXA|ASA\b|FIGADO/],
     ['Frios e laticínios',/LEITE|QUEIJO|IOGURTE|MANTEIGA|REQUEIJ|CREME DE LEITE|NATA\b|MUSSARELA|PRESUNTO|MORTADELA|RICOTA|DANONE|L[ÁA]CTEA|COALHADA|PETIT|CATUPIRY|PARMES[ÃA]O|PROVOLONE/],
     ['Padaria',/P[ÃA]O\b|P[ÃA]ES|BOLO|BISCOITO|ROSQUINHA|SONHO|TORRADA|CROISSANT|BAGUETE|BROA|P[ÃA]O DE|PAO FRANC|P[ÃA]O FRANC|P[ÃA]O INTEGRAL|PAO DE QUEIJO|P[ÃA]O DE QUEIJO/],
@@ -1254,9 +1255,28 @@ function parseCupom(txt){
   const RX_X=/(\d+(?:[.,]\d+)?)\s*(?:UN|UNID|UND|KG|LT|CX|PC|GR|G|FD|DZ|ML|M|L)?\s*[xX]\s*(\d+[.,]\d{2})/;
   const RX_UN=/[\(]?(\d+(?:[.,]\d+)?)\s*(?:UN|UNID|UND|KG|LT|CX|PC|GR|FD|DZ|ML|M|L)\b/gi;
   const RX_LETRA=/[A-Za-zÀ-ÿ]{2,}/;
+  const RX_TAB=/^\s*(\d{1,3})[.,)\]]?\s+(.+?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
+  const RX_SOUNID=/^(UN|UNID|UND|KG|LT|CX|PC|GR|FD|DZ|ML)\b/i;
+  const pn=function(s){return parseFloat(String(s).replace(/\./g,'').replace(',','.'));};
   let pend=null;   // descrição que ficou esperando o preço na linha de baixo (NFC-e)
   linhas.forEach(function(l){
     if(CUP_SKIP.test(l))return;
+
+    // --- formato tabela: QTD  DESCRICAO  VL.UNIT  TOTAL ---
+    if(!RX_X.test(l)){
+      const tb=l.match(RX_TAB);
+      if(tb){
+        const q=parseFloat(tb[1].replace(',','.'));
+        const u=pn(tb[3]),tt=pn(tb[4]);
+        const dd=cupLimpaDesc(tb[2]);
+        if(q>0&&u>0&&tt>0&&Math.abs(q*u-tt)<=0.06&&RX_LETRA.test(dd)&&!RX_SOUNID.test(dd)){
+          pend=null;
+          out.push({nome:(dd.length>48?dd.slice(0,48).trim():dd),qtd:Math.round(q*1000)/1000,valor:Math.round(u*100)/100,cat:adivinharCat(dd),sel:true});
+          return;
+        }
+      }
+    }
+
     const m=l.match(RX_END);
     if(!m){
       // sem preço no fim: pode ser a descrição do item (o preço vem embaixo)
@@ -1273,13 +1293,20 @@ function parseCupom(txt){
     const xm=desc.match(RX_X);
     if(xm){qtd=parseFloat(xm[1].replace(',','.'))||1;unit=parseFloat(xm[2].replace(',','.'));desc=desc.replace(xm[0],' ');}
     else{
-      RX_UN.lastIndex=0;let mm,last=null;
-      while((mm=RX_UN.exec(desc))!==null){last=mm;}
-      if(last){qtd=parseFloat(last[1].replace(',','.'))||1;desc=desc.replace(last[0],' ');}
+      // quantidade no começo da linha (cupom em tabela: "2 FEIJAO CARIOCA 1KG ... 8,50 17,00")
+      const lm=desc.match(/^\s*(\d{1,3})[.,)\]]?\s+/);
+      if(lm&&RX_LETRA.test(desc.slice(lm[0].length))){
+        qtd=parseFloat(lm[1])||1;
+        desc=desc.slice(lm[0].length);
+      }else{
+        RX_UN.lastIndex=0;let mm,last=null;
+        while((mm=RX_UN.exec(desc))!==null){last=mm;}
+        if(last){qtd=parseFloat(last[1].replace(',','.'))||1;desc=desc.replace(last[0],' ');}
+      }
     }
     desc=cupLimpaDesc(desc);
-    if(!RX_LETRA.test(desc)){
-      // a linha só tinha números: usa a descrição da linha de cima
+    if(!RX_LETRA.test(desc)||RX_SOUNID.test(desc)){
+      // a linha só tinha números (ou só a unidade): usa a descrição da linha de cima
       if(pend)desc=pend;
       else return;
     }
