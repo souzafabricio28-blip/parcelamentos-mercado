@@ -331,11 +331,9 @@
     </div>
     <div class="right">
       <div class="bell">🔔<b id="belln">1</b></div>
-      <button class="btn ghost" onclick="exportar()" title="Baixar um backup em arquivo">💾 Backup</button>
-      <button class="btn ghost" onclick="document.getElementById('imp').click()" title="Restaurar de um backup">📂 Restaurar</button>
+      <button class="btn ghost" onclick="abrirRestaurar()" title="Voltar para uma cópia de segurança">📂 Restaurar</button>
       <button class="btn danger" onclick="zerarTudo()" title="Apagar todas as informações e começar do zero">🗑 Zerar tudo</button>
       <button class="btn" onclick="document.getElementById('nome').focus()">+ Nova compra</button>
-      <input id="imp" type="file" accept="application/json,.json" style="display:none" onchange="importar(this)">
     </div>
   </div>
 
@@ -591,6 +589,20 @@
   </div>
 </div>
 
+<div class="modal" id="restaurarModal" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="mbox">
+    <h3>📂 Restaurar dados</h3>
+    <div class="hint" style="margin-bottom:14px">O app guarda <b>sozinho uma cópia por dia</b> (as últimas 7 ficam salvas na nuvem). Se algo der errado, é só voltar pra um desses dias.</div>
+    <div id="rstLista"></div>
+    <div id="rstAviso" class="hint" style="display:none;color:#ffd479"></div>
+    <div class="mact" style="justify-content:space-between;margin-top:14px">
+      <button class="btn ghost sm" onclick="document.getElementById('imp').click()">📄 Restaurar de um arquivo</button>
+      <button class="btn ghost sm" onclick="document.getElementById('restaurarModal').classList.remove('on')">Fechar</button>
+    </div>
+    <input id="imp" type="file" accept="application/json,.json" style="display:none" onchange="importar(this)">
+  </div>
+</div>
+
 <div class="modal" id="nuvemModal" onclick="if(event.target===this)this.classList.remove('on')">
   <div class="mbox">
     <h3>☁️ Sincronizar na nuvem</h3>
@@ -754,7 +766,7 @@ function importar(inp){
 }
 function zerarTudo(){
   if(!confirm('Zerar TODAS as informações do app?\n\n• Parcelamentos\n• Contas a pagar e a receber\n• Mercado e histórico\n• Orçamento e configurações\n\nIsso NÃO pode ser desfeito. Continuar?'))return;
-  const ks=[KEY,MKEY,HKEY,CKEY,EKEY,OKEY,AKEY,NKEY];
+  const ks=[KEY,MKEY,HKEY,CKEY,EKEY,OKEY,AKEY,NKEY,SBACKDIA];
   try{ks.forEach(function(k){localStorage.removeItem(k);});}catch(e){}
   try{Object.keys(localStorage).forEach(function(k){if(k.indexOf('notif_')===0)localStorage.removeItem(k);});}catch(e){}
   plans=[];itens=[];hist=[];contas=[];entradas={};orcamento=0;alertaDias=3;sel=0;
@@ -793,7 +805,11 @@ function syncTemDados(){
 }
 async function syncReq(metodo,corpo){
   var url=SYNC_BASE+'/api/sync',opt={method:metodo,cache:'no-store'};
-  if(metodo==='GET'){url+='?key='+encodeURIComponent(syncKey);}
+  if(metodo==='GET'){
+    url+='?key='+encodeURIComponent(syncKey);
+    if(corpo&&corpo.tipo)url+='&tipo='+encodeURIComponent(corpo.tipo);
+    if(corpo&&corpo.dia)url+='&dia='+encodeURIComponent(corpo.dia);
+  }
   else{opt.headers={'Content-Type':'application/json'};opt.body=JSON.stringify(corpo);}
   var r=await fetch(url,opt),j=null;
   try{j=await r.json();}catch(e){}
@@ -839,12 +855,15 @@ async function syncIniciar(){
     if(!j||j.vazio){
       if(syncTemDados())await syncPush(true);
       else syncStatus('Nuvem ligada — nada guardado ainda.');
-      return;
+    }else if(j.updatedAt>syncLocalAt){
+      await syncPull(true,true);
+      syncStatus(syncQuando());
+    }else{
+      if(syncLocalAt>j.updatedAt)await syncPush(true);
+      syncStatus(syncQuando());
     }
-    if(j.updatedAt>syncLocalAt)await syncPull(true,true);
-    else if(syncLocalAt>j.updatedAt)await syncPush(true);
-    syncStatus(syncQuando());
   }catch(e){syncStatus('Sem conexão com a nuvem agora.','#ffb4b4');}
+  backupAuto();
 }
 function abrirNuvem(){
   var m=document.getElementById('nuvemModal');if(!m)return;
@@ -893,12 +912,81 @@ function salvarTudo(){
   syncPush(true).then(function(){
     if(b)b.textContent='✅ Salvo na nuvem';
     toast('💾 Salvo no banco de dados ✓');
+    backupEnviar(true).catch(function(){});
   }).catch(function(e){
     if(b)b.textContent='⚠️ Só aqui';
     toast('Salvou no aparelho, mas não subiu: '+e.message);
   }).then(function(){
     setTimeout(function(){if(b){b.disabled=false;b.textContent='💾 Salvar';}},1900);
   });
+}
+/* ===== 🗄️ CÓPIAS DE SEGURANÇA AUTOMÁTICAS ===== */
+var SBACKDIA='backup_dia_v1';
+function diaLocal(d){
+  d=d||new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function diaBonito(s){try{var p=String(s).split('-');return p[2]+'/'+p[1]+'/'+p[0];}catch(e){return s;}}
+async function backupEnviar(silencioso){
+  if(!syncKey)return false;
+  await syncReq('POST',{key:syncKey,tipo:'backup',dia:diaLocal(),data:coletarDados(),device:(navigator.platform||'pc')});
+  try{localStorage.setItem(SBACKDIA,diaLocal());}catch(e){}
+  if(!silencioso)toast('🗄️ Cópia de segurança guardada ✓');
+  return true;
+}
+function backupAuto(){
+  if(!syncKey)return;
+  if(!syncTemDados())return;
+  try{if(localStorage.getItem(SBACKDIA)===diaLocal())return;}catch(e){}
+  backupEnviar(true).catch(function(){});
+}
+function abrirRestaurar(){
+  var m=document.getElementById('restaurarModal');if(!m)return;
+  m.classList.add('on');
+  var lista=document.getElementById('rstLista'),aviso=document.getElementById('rstAviso');
+  if(!lista)return;
+  lista.innerHTML='<div class="hint" style="margin:6px 0">Buscando as cópias…</div>';
+  if(aviso)aviso.style.display='none';
+  if(!syncKey){
+    lista.innerHTML='';
+    if(aviso){aviso.style.display='block';aviso.textContent='A nuvem está desligada neste aparelho, então não tem cópias pra mostrar. Você ainda pode restaurar de um arquivo.';}
+    return;
+  }
+  syncReq('GET',{tipo:'backup'}).then(function(j){
+    var bs=(j&&j.backups)||[];
+    if(!bs.length){
+      lista.innerHTML='';
+      if(aviso){aviso.style.display='block';aviso.textContent='Ainda não tem nenhuma cópia guardada. O app cria uma sozinho, todo dia.';}
+      return;
+    }
+    lista.innerHTML=bs.map(function(b){
+      var r=b.resumo||{},partes=[];
+      if(r.parcelamentos)partes.push(r.parcelamentos+(r.parcelamentos>1?' parcelamentos':' parcelamento'));
+      if(r.contasPagar)partes.push(r.contasPagar+(r.contasPagar>1?' contas a pagar':' conta a pagar'));
+      if(r.contasReceber)partes.push(r.contasReceber+' a receber');
+      if(r.mercado)partes.push(r.mercado+(r.mercado>1?' itens no mercado':' item no mercado'));
+      var det=partes.length?partes.join(' · '):'sem dados';
+      var hora='';
+      try{hora=' às '+new Date(b.updatedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}catch(e){}
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #26324A">'
+        +'<div><b>'+diaBonito(b.dia)+'</b><div class="hint" style="margin:2px 0 0">'+det+hora+'</div></div>'
+        +'<button class="btn ghost sm" onclick="restaurarBackup(\''+b.dia+'\')">Restaurar</button></div>';
+    }).join('');
+  }).catch(function(e){
+    lista.innerHTML='';
+    if(aviso){aviso.style.display='block';aviso.textContent='Não consegui buscar as cópias agora: '+e.message;}
+  });
+}
+function restaurarBackup(dia){
+  if(!confirm('Voltar os dados para a cópia de '+diaBonito(dia)+'?\n\nO que está agora será substituído — e a mudança vai pra todos os aparelhos.'))return;
+  syncReq('GET',{tipo:'backup',dia:dia}).then(function(j){
+    if(!j||j.vazio||!j.data){toast('Não achei essa cópia');return;}
+    syncAplicando=true;
+    try{aplicarDados(j.data);}finally{syncAplicando=false;}
+    syncMarcarLocal();
+    var m=document.getElementById('restaurarModal');if(m)m.classList.remove('on');
+    toast('📂 Dados de '+diaBonito(dia)+' restaurados ✓');
+  }).catch(function(e){toast('Erro: '+e.message);});
 }
 function syncDesativar(){
   if(!confirm('Desligar a sincronização neste aparelho?\n\nOs dados que já estão aqui continuam salvos. Só para de sincronizar.'))return;
