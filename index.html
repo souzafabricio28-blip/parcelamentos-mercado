@@ -601,16 +601,16 @@
       </div>
       <div class="hint">Funciona como uma senha: <b>quem souber o código vê os dados</b>. Use algo difícil, só seu, e igual em todos os aparelhos.</div>
       <div id="nvStat" class="hint" style="margin-top:12px;font-weight:600"></div>
-      <div class="mact" style="justify-content:space-between;margin-top:8px">
-        <div style="display:flex;gap:9px;flex-wrap:wrap">
-          <button class="btn ghost sm" onclick="syncEnviar()">⬆️ Enviar deste aparelho</button>
-          <button class="btn ghost sm" onclick="syncBaixar()">⬇️ Baixar da nuvem</button>
+      <div style="display:flex;flex-direction:column;gap:9px;margin-top:12px">
+        <button class="btn" onclick="syncSalvarKey()">✅ Ativar / Salvar este código</button>
+        <div style="display:flex;gap:9px">
+          <button class="btn ghost sm" style="flex:1;justify-content:center" onclick="syncEnviar()">↑ Enviar deste aparelho</button>
+          <button class="btn ghost sm" style="flex:1;justify-content:center" onclick="syncBaixar()">↓ Baixar da nuvem</button>
         </div>
-        <button class="btn" onclick="syncSalvarKey()">Ativar / Salvar</button>
-      </div>
-      <div class="mact" style="justify-content:space-between;margin-top:10px">
-        <div class="hint" style="margin:0">Depois de ativado, o app envia sozinho a cada mudança.</div>
-        <button class="btn ghost sm" onclick="syncDesativar()">Desligar neste aparelho</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div class="hint" style="margin:0">Depois de ativado, o app envia sozinho a cada mudança.</div>
+          <button class="btn ghost sm" onclick="syncDesativar()">Desligar</button>
+        </div>
       </div>
     </div>
   </div>
