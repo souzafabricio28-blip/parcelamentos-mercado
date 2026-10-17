@@ -887,6 +887,16 @@ function syncDesativar(){
   syncStatus('Nuvem desligada neste aparelho.');
   toast('Sincronização desligada');
 }
+function syncPodePuxar(){
+  try{
+    if(document.querySelector('.modal.on'))return false;
+    var a=document.activeElement;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA'))return false;
+  }catch(e){}
+  return true;
+}
+window.addEventListener('focus',function(){if(syncKey&&syncPodePuxar())syncPull(false,true).catch(function(){});});
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&syncKey&&syncPodePuxar())syncPull(false,true).catch(function(){});});
 let edIdx=-1;
 function abrirEdicao(i){
   edIdx=i;const p=plans[i];
