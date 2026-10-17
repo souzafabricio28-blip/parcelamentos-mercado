@@ -607,7 +607,7 @@
           <button class="btn ghost sm" style="flex:1;justify-content:center" onclick="syncBaixar()">↓ Baixar da nuvem</button>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-          <div class="hint" style="margin:0">Depois de ativado, o app envia sozinho a cada mudança.</div>
+          <div class="hint" style="margin:0">Depois de ativado ele fica <b>sempre ligado</b>: envia a cada mudança e busca novidades a cada 10 segundos.</div>
           <button class="btn ghost sm" onclick="syncDesativar()">Desligar</button>
         </div>
       </div>
@@ -818,16 +818,16 @@ async function syncPush(silent){
   syncStatus(syncQuando());
   return true;
 }
-async function syncPull(forcar,silent){
+async function syncPull(forcar,silencioso,msg){
   if(!syncKey||!syncOnline)return false;
   var j=await syncReq('GET');
-  if(!j||j.vazio){if(!silent)toast('A nuvem ainda está vazia');return false;}
+  if(!j||j.vazio){if(!silencioso)toast('A nuvem ainda está vazia');return false;}
   if(!forcar&&j.updatedAt&&j.updatedAt<=syncLast)return false;
   syncAplicando=true;
   try{aplicarDados(j.data);}finally{syncAplicando=false;}
   syncLast=j.updatedAt;syncLocalAt=j.updatedAt;
   try{localStorage.setItem(SLAST,String(syncLast));localStorage.setItem(SLOCAL,String(syncLocalAt));}catch(e){}
-  if(!silent)toast('⬇️ Dados da nuvem aplicados ✓');
+  if(!silencioso)toast(msg||'⬇️ Dados da nuvem aplicados ✓');
   syncStatus(syncQuando());
   return true;
 }
@@ -895,8 +895,31 @@ function syncPodePuxar(){
   }catch(e){}
   return true;
 }
-window.addEventListener('focus',function(){if(syncKey&&syncPodePuxar())syncPull(false,true).catch(function(){});});
-document.addEventListener('visibilitychange',function(){if(!document.hidden&&syncKey&&syncPodePuxar())syncPull(false,true).catch(function(){});});
+function syncAuto(){
+  if(!syncKey||!syncOnline||document.hidden||!syncPodePuxar())return;
+  syncPull(false,false,'☁️ Atualizado por outro aparelho').catch(function(){});
+}
+var syncPoll=null;
+function syncLigarPoll(){
+  if(syncPoll)return;
+  syncPoll=setInterval(syncAuto,10000);
+}
+window.addEventListener('focus',syncAuto);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)syncAuto();});
+function lerSyncDaURL(){
+  try{
+    var m=(location.hash||'').match(/[#&]sync=([^&]+)/);
+    if(!m)return false;
+    var k=decodeURIComponent(m[1]).trim().toLowerCase();
+    if(k.length<8)return false;
+    if(k!==syncKey){
+      syncKey=k;
+      try{localStorage.setItem(SKEY,k);}catch(e){}
+    }
+    try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+    return true;
+  }catch(e){return false;}
+}
 let edIdx=-1;
 function abrirEdicao(i){
   edIdx=i;const p=plans[i];
@@ -1729,6 +1752,7 @@ loadE();
 loadAlertaDias();
 loadNotif();
 aplicarCfgDaURL();
+lerSyncDaURL();
 syncStatus();
 fillCats();
 document.getElementById('item').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addItem();}});
@@ -1751,8 +1775,9 @@ calc();render();renderM();renderContas();renderGastos();
 checarAlertas(true);
 setInterval(function(){checarAlertas(true);},1800000);
 const hh=location.hash.replace('#','');
-mostrarTab(hh==='mercado'?'m':(hh==='contas'?'c':(hh==='parcelas'?'p':'d')));
+mostrarTab(/mercado/.test(hh)?'m':(/contas/.test(hh)?'c':(/parcelas/.test(hh)?'p':'d')));
 syncIniciar();
+syncLigarPoll();
 </script>
 <div id="toast"></div>
 </body></html>
